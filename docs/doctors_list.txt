@@ -1,0 +1,46 @@
+Doctors List & Specialties
+==========================
+
+DOCTORS LIST & SPECIALTIES
+
+Dr. Sarah Johnson - Cardiology
+Experience: 15 years
+Consultation Fee: $150
+Availability: Monday-Friday, 9:00 AM - 5:00 PM
+Languages: English, Spanish
+
+Dr. Michael Chen - Dermatology
+Experience: 12 years
+Consultation Fee: $120
+Availability: Tuesday-Saturday, 10:00 AM - 6:00 PM
+Languages: English, Mandarin
+
+Dr. Emily Rodriguez - Pediatrics
+Experience: 10 years
+Consultation Fee: $100
+Availability: Monday-Friday, 8:00 AM - 4:00 PM
+Languages: English, Spanish
+
+Dr. James Wilson - Orthopedics
+Experience: 18 years
+Consultation Fee: $180
+Availability: Monday-Thursday, 9:00 AM - 5:00 PM
+Languages: English
+
+Dr. Lisa Anderson - General Practice
+Experience: 8 years
+Consultation Fee: $90
+Availability: Monday-Friday, 8:00 AM - 6:00 PM
+Languages: English, French
+
+Dr. Robert Kim - Neurology
+Experience: 14 years
+Consultation Fee: $200
+Availability: Tuesday-Friday, 10:00 AM - 4:00 PM
+Languages: English, Korean
+
+Dr. Maria Garcia - Gynecology
+Experience: 11 years
+Consultation Fee: $130
+Availability: Monday-Wednesday, Friday, 9:00 AM - 5:00 PM
+Languages: English, Spanish

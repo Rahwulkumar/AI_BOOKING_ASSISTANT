@@ -1,53 +1,24 @@
 """
-Script to create sample PDFs for the booking assistant
+Simple script to create sample PDFs using fpdf (lighter alternative)
+If fpdf is not available, creates text files that can be converted to PDF
 """
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
+import os
 
-def create_pdf(filename, title, content_lines):
-    """Create a PDF file with given title and content"""
-    c = canvas.Canvas(filename, pagesize=letter)
-    width, height = letter
+def create_text_file(filename, title, content_lines):
+    """Create a text file with content (can be converted to PDF manually)"""
+    os.makedirs("docs", exist_ok=True)
+    filepath = f"docs/{filename}"
     
-    # Title
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, title)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(f"{title}\n")
+        f.write("=" * len(title) + "\n\n")
+        for line in content_lines:
+            f.write(line + "\n")
     
-    # Content
-    c.setFont("Helvetica", 11)
-    y_position = height - 100
-    line_height = 15
-    
-    for line in content_lines:
-        if y_position < 50:  # New page if needed
-            c.showPage()
-            y_position = height - 50
-        
-        # Handle long lines
-        if len(line) > 80:
-            words = line.split()
-            current_line = ""
-            for word in words:
-                if len(current_line + word) < 80:
-                    current_line += word + " "
-                else:
-                    c.drawString(50, y_position, current_line.strip())
-                    y_position -= line_height
-                    current_line = word + " "
-            if current_line:
-                c.drawString(50, y_position, current_line.strip())
-                y_position -= line_height
-        else:
-            c.drawString(50, y_position, line)
-            y_position -= line_height
-        
-        y_position -= 5  # Spacing between lines
-    
-    c.save()
-    print(f"Created: {filename}")
+    print(f"Created: {filepath}")
+    return filepath
 
-# Create doctors_list.pdf
+# Doctors list content
 doctors_content = [
     "DOCTORS LIST & SPECIALTIES",
     "",
@@ -94,7 +65,7 @@ doctors_content = [
     "Languages: English, Spanish"
 ]
 
-# Create clinic_policies.pdf
+# Clinic policies content
 policies_content = [
     "CLINIC POLICIES & GUIDELINES",
     "",
@@ -147,7 +118,7 @@ policies_content = [
     "Emergency: Call 911 for medical emergencies"
 ]
 
-# Create services_pricing.pdf
+# Services pricing content
 services_content = [
     "SERVICES & PRICING",
     "",
@@ -209,12 +180,58 @@ services_content = [
 ]
 
 if __name__ == "__main__":
-    import os
-    os.makedirs("docs", exist_ok=True)
-    
-    create_pdf("docs/doctors_list.pdf", "Doctors List & Specialties", doctors_content)
-    create_pdf("docs/clinic_policies.pdf", "Clinic Policies & Guidelines", policies_content)
-    create_pdf("docs/services_pricing.pdf", "Services & Pricing", services_content)
-    
-    print("\n✅ All sample PDFs created successfully!")
+    # Try to use fpdf2 if available, otherwise create text files
+    try:
+        from fpdf import FPDF  # fpdf2 package uses 'from fpdf import FPDF'
+        
+        class PDF(FPDF):
+            def header(self):
+                self.set_font('Arial', 'B', 16)
+                self.cell(0, 10, '', 0, 1, 'C')
+            
+            def footer(self):
+                self.set_y(-15)
+                self.set_font('Arial', 'I', 8)
+                self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+        
+        def create_pdf_fpdf(filename, title, content_lines):
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_font('Arial', 'B', 16)
+            pdf.cell(0, 10, title, 0, 1, 'L')
+            pdf.ln(5)
+            pdf.set_font('Arial', '', 11)
+            
+            for line in content_lines:
+                if line.strip():
+                    pdf.cell(0, 8, line, 0, 1, 'L')
+                else:
+                    pdf.ln(4)
+            
+            os.makedirs("docs", exist_ok=True)
+            filepath = f"docs/{filename}"
+            pdf.output(filepath)
+            print(f"Created PDF: {filepath}")
+            return filepath
+        
+        # Create PDFs using fpdf
+        create_pdf_fpdf("doctors_list.pdf", "Doctors List & Specialties", doctors_content)
+        create_pdf_fpdf("clinic_policies.pdf", "Clinic Policies & Guidelines", policies_content)
+        create_pdf_fpdf("services_pricing.pdf", "Services & Pricing", services_content)
+        
+    except ImportError:
+        print("fpdf not available. Creating text files instead.")
+        print("You can convert these to PDF using Word, Google Docs, or online converters.")
+        print("Or install fpdf: pip install fpdf2\n")
+        
+        # Create text files
+        create_text_file("doctors_list.txt", "Doctors List & Specialties", doctors_content)
+        create_text_file("clinic_policies.txt", "Clinic Policies & Guidelines", policies_content)
+        create_text_file("services_pricing.txt", "Services & Pricing", services_content)
+        
+        print("\nNOTE: Text files created. Please convert to PDF manually:")
+        print("   1. Open each .txt file")
+        print("   2. Copy content to Word/Google Docs")
+        print("   3. Save as PDF")
+        print("   4. Rename to .pdf and place in docs/ folder")
 

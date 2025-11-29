@@ -67,7 +67,12 @@ def chat_page():
                 for pdf_path in sample_pdfs:
                     if os.path.exists(pdf_path):
                         with open(pdf_path, "rb") as f:
-                            chunks = rag_pipeline.process_pdfs([f])
+                            # Create a file-like object that pdfplumber can read
+                            import io
+                            pdf_bytes = f.read()
+                            pdf_file_obj = io.BytesIO(pdf_bytes)
+                            pdf_file_obj.name = os.path.basename(pdf_path)
+                            chunks = rag_pipeline.process_pdfs([pdf_file_obj])
                             chunks_count += chunks
                 
                 if chunks_count > 0:
