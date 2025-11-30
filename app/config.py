@@ -25,25 +25,21 @@ def get_google_api_key():
 # Supabase Configuration
 def get_supabase_config():
     """Get Supabase URL and key from Streamlit secrets (cloud) or .env (local)"""
-    url = ""
-    key = ""
-    
-    # On Streamlit Cloud, st.secrets is available - use it first
+    # Try Streamlit secrets first (same pattern as get_google_api_key)
     try:
-        if hasattr(st, 'secrets') and st.secrets:
-            url_raw = st.secrets.get("SUPABASE_URL", "")
-            key_raw = st.secrets.get("SUPABASE_KEY", "")
-            # Sanitize: strip quotes and whitespace
-            url = str(url_raw).strip().strip('"').strip("'")
-            key = str(key_raw).strip().strip('"').strip("'")
-    except (KeyError, AttributeError, TypeError):
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        # Sanitize: strip quotes and whitespace (in case user added quotes in secrets)
+        url = str(url).strip().strip('"').strip("'")
+        key = str(key).strip().strip('"').strip("'")
+        if url and key:
+            return {"url": url, "key": key}
+    except (KeyError, AttributeError):
         pass
     
     # Fallback to .env (for local development)
-    if not url or not key:
-        url = os.getenv("SUPABASE_URL", "").strip()
-        key = os.getenv("SUPABASE_KEY", "").strip()
-    
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv("SUPABASE_KEY", "").strip()
     return {"url": url, "key": key}
 
 # Gmail SMTP Configuration
