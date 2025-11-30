@@ -52,6 +52,7 @@ Thumbs.db
 
 # Documentation files (not pushed to GitHub)
 *.md
+!README.md
 
 # FAISS index files (if saved to disk)
 *.index
