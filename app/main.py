@@ -277,6 +277,10 @@ def chat_page():
         
         st.session_state.messages.append({"role": "assistant", "content": response})
         
+        # Rerun if a widget needs to be shown (service, date, or time selector)
+        if st.session_state.get("show_widget") in ["service", "date", "time"]:
+            st.rerun()
+        
         if len(st.session_state.messages) > MAX_CONVERSATION_HISTORY * 2:
             st.session_state.messages = st.session_state.messages[-MAX_CONVERSATION_HISTORY * 2:]
 
