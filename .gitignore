@@ -50,6 +50,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Documentation files (not pushed to GitHub)
+*.md
+
 # FAISS index files (if saved to disk)
 *.index
 *.faiss

@@ -1,17 +1,175 @@
-"""
-Booking flow: Slot filling, validation, and confirmation
-"""
 import streamlit as st
 import re
-from datetime import datetime, date
-from typing import Dict, Optional, Tuple
+from datetime import datetime, date, timedelta
+from typing import Dict, Optional, Tuple, List
 from app.config import EMAIL_PATTERN, PHONE_MIN_LENGTH, DATE_FORMAT, TIME_FORMAT
 from app.chat_logic import get_llm
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from app.tools import BookingPersistenceTool, EmailTool
+from db.database import get_database
+
+MORNING_SLOTS = ["09:00", "10:00", "11:00", "12:00"]
+AFTERNOON_SLOTS = ["13:00", "14:00", "15:00", "16:00"]
+EVENING_SLOTS = ["17:00", "18:00", "19:00"]
+ALL_TIME_SLOTS = MORNING_SLOTS + AFTERNOON_SLOTS + EVENING_SLOTS
+
+def extract_services_from_pdfs() -> List[str]:
+    try:
+        if st.session_state.get("vector_store") is None:
+            return get_default_services()
+        
+        from app.rag_pipeline import RAGPipeline
+        rag_pipeline = RAGPipeline()
+        context = rag_pipeline.get_context_for_query("List all doctors and their specialties with consultation fees")
+        
+        if "No relevant information" in context:
+            return get_default_services()
+        
+        services = []
+        lines = context.split('\n')
+        
+        current_doctor = None
+        current_specialty = None
+        current_fee = None
+        
+        for line in lines:
+            line = line.strip()
+            
+            if 'Dr.' in line and '-' in line:
+                parts = line.split('-')
+                if len(parts) >= 2:
+                    current_doctor = parts[0].strip()
+                    current_specialty = parts[1].strip()
+            
+            if 'Fee:' in line or 'Consultation' in line:
+                fee_match = re.search(r'\$(\d+)', line)
+                if fee_match:
+                    current_fee = f"${fee_match.group(1)}"
+            
+            if current_doctor and current_specialty and current_fee:
+                service_name = f"{current_specialty} - {current_doctor} ({current_fee})"
+                if service_name not in services:
+                    services.append(service_name)
+                current_doctor = None
+                current_specialty = None
+                current_fee = None
+        
+        if not services:
+            return get_default_services()
+        
+        return services
+        
+    except Exception as e:
+        st.error(f"Error extracting services: {str(e)}")
+        return get_default_services()
+
+def get_default_services() -> List[str]:
+    return [
+        "General Consultation",
+        "Cardiology Consultation",
+        "Dermatology Consultation",
+        "Pediatrics Consultation",
+        "Orthopedics Consultation",
+        "Neurology Consultation",
+        "Gynecology Consultation"
+    ]
+
+def get_booked_time_slots(selected_date: str) -> List[str]:
+    try:
+        db = get_database()
+        query_result = db.client.table("bookings").select("time").eq("date", selected_date).execute()
+        
+        booked_times = []
+        if query_result.data:
+            for booking in query_result.data:
+                time_str = booking.get("time", "")
+                if time_str:
+                    time_obj = datetime.strptime(time_str, "%H:%M:%S" if len(time_str) > 5 else "%H:%M")
+                    normalized_time = time_obj.strftime("%H:%M")
+                    booked_times.append(normalized_time)
+        
+        return booked_times
+    except Exception as e:
+        st.error(f"Error checking availability: {str(e)}")
+        return []
+
+def show_service_selector() -> Optional[str]:
+    st.markdown("### 📋 Select Service")
+    
+    services = extract_services_from_pdfs()
+    
+    if "available_services" not in st.session_state:
+        st.session_state.available_services = services
+    
+    selected_service = st.selectbox(
+        "Choose the service you need:",
+        options=services,
+        key="service_selector"
+    )
+    
+    if st.button("✅ Confirm Service", key="confirm_service"):
+        return selected_service
+    
+    return None
+
+def show_date_selector() -> Optional[str]:
+    st.markdown("### 📅 Select Date")
+    
+    min_date = date.today() + timedelta(days=1)
+    max_date = date.today() + timedelta(days=30)
+    
+    selected_date = st.date_input(
+        "Choose your preferred date:",
+        min_value=min_date,
+        max_value=max_date,
+        value=min_date,
+        key="date_selector"
+    )
+    
+    if st.button("✅ Confirm Date", key="confirm_date"):
+        return selected_date.strftime("%Y-%m-%d")
+    
+    return None
+
+def show_time_slot_selector(selected_date: str) -> Optional[str]:
+    st.markdown("### ⏰ Select Time Slot")
+    
+    booked_slots = get_booked_time_slots(selected_date)
+    available_count = len(ALL_TIME_SLOTS) - len(booked_slots)
+    st.info(f"📊 {available_count} slots available out of {len(ALL_TIME_SLOTS)} on {selected_date}")
+    
+    selected_time = None
+    
+    st.markdown("**🌅 Morning (9 AM - 12 PM)**")
+    cols = st.columns(len(MORNING_SLOTS))
+    for idx, slot in enumerate(MORNING_SLOTS):
+        with cols[idx]:
+            is_booked = slot in booked_slots
+            label = f"{slot}\n{'🔴 Booked' if is_booked else '🟢 Available'}"
+            if st.button(label, key=f"morning_{slot}", disabled=is_booked, use_container_width=True):
+                selected_time = slot
+    
+    st.markdown("**☀️ Afternoon (1 PM - 4 PM)**")
+    cols = st.columns(len(AFTERNOON_SLOTS))
+    for idx, slot in enumerate(AFTERNOON_SLOTS):
+        with cols[idx]:
+            is_booked = slot in booked_slots
+            label = f"{slot}\n{'🔴 Booked' if is_booked else '🟢 Available'}"
+            if st.button(label, key=f"afternoon_{slot}", disabled=is_booked, use_container_width=True):
+                selected_time = slot
+    
+    st.markdown("**🌙 Evening (5 PM - 7 PM)**")
+    cols = st.columns(len(EVENING_SLOTS))
+    for idx, slot in enumerate(EVENING_SLOTS):
+        with cols[idx]:
+            is_booked = slot in booked_slots
+            label = f"{slot}\n{'🔴 Booked' if is_booked else '🟢 Available'}"
+            if st.button(label, key=f"evening_{slot}", disabled=is_booked, use_container_width=True):
+                selected_time = slot
+    
+    return selected_time
 
 def validate_email(email: str) -> Tuple[bool, str]:
-    """Validate email format"""
     if not email:
         return False, "Email cannot be empty"
     if not re.match(EMAIL_PATTERN, email):
@@ -19,47 +177,22 @@ def validate_email(email: str) -> Tuple[bool, str]:
     return True, ""
 
 def validate_phone(phone: str) -> Tuple[bool, str]:
-    """Validate phone number"""
     if not phone:
         return False, "Phone number cannot be empty"
-    # Remove common separators
     digits_only = re.sub(r'[\s\-\(\)\+]', '', phone)
     if len(digits_only) < PHONE_MIN_LENGTH:
         return False, f"Please provide a valid phone number (at least {PHONE_MIN_LENGTH} digits)"
     return True, ""
 
-def validate_date(date_str: str) -> Tuple[bool, str]:
-    """Validate date format and ensure it's in the future"""
-    if not date_str:
-        return False, "Date cannot be empty"
-    try:
-        parsed_date = datetime.strptime(date_str, DATE_FORMAT).date()
-        today = date.today()
-        if parsed_date <= today:
-            return False, "Please select a future date (format: YYYY-MM-DD, e.g., 2025-12-15)"
-        return True, ""
-    except ValueError:
-        return False, "Please use date format YYYY-MM-DD (e.g., 2025-12-15)"
-
-def validate_time(time_str: str) -> Tuple[bool, str]:
-    """Validate time format"""
-    if not time_str:
-        return False, "Time cannot be empty"
-    try:
-        datetime.strptime(time_str, TIME_FORMAT)
-        return True, ""
-    except ValueError:
-        return False, "Please use time format HH:MM (24-hour format, e.g., 14:30)"
+def get_missing_fields(booking_state: Dict) -> list:
+    required_fields = ["name", "email", "phone", "service", "date", "time"]
+    missing = [field for field in required_fields if not booking_state.get(field)]
+    return missing
 
 def extract_field_from_message(message: str, field_name: str, conversation_history: list) -> Optional[str]:
-    """
-    Extract field value from user message using LLM
-    Returns extracted value or None
-    """
     try:
         llm = get_llm()
         
-        # Format history
         history_text = ""
         for msg in conversation_history[-5:]:
             role = "User" if msg["role"] == "user" else "Assistant"
@@ -90,114 +223,94 @@ Extract the {field_name} from this message. Return only the value or "NOT_FOUND"
         return extracted
         
     except Exception as e:
-        st.error(f"Error extracting field: {str(e)}")
         return None
 
-def get_missing_fields(booking_state: Dict) -> list:
-    """Get list of missing required fields"""
-    required_fields = ["name", "email", "phone", "service", "date", "time"]
-    missing = [field for field in required_fields if not booking_state.get(field)]
-    return missing
-
 def get_next_field_prompt(field: str) -> str:
-    """Get prompt to ask for a specific field"""
     prompts = {
-        "name": "Great! What is your full name?",
-        "email": "What is your email address?",
-        "phone": "What is your phone number?",
-        "service": "What type of service or consultation do you need? (e.g., Cardiology consultation, General checkup, Dermatology)",
-        "date": "What is your preferred date? Please use format YYYY-MM-DD (e.g., 2025-12-15)",
-        "time": "What time would you prefer? Please use format HH:MM (24-hour format, e.g., 14:30)"
+        "name": "Great! 😊 What's your full name?",
+        "email": "Perfect! What's your email address?",
+        "phone": "Got it! What's your phone number?",
+        "service": "I'll show you our available services. Please select one.",
+        "date": "When would you like to schedule your appointment? I'll show you a calendar.",
+        "time": "What time works best for you? I'll show you the available time slots."
     }
     return prompts.get(field, f"Please provide your {field}")
 
-def collect_booking_info(user_message: str, conversation_history: list) -> Tuple[Dict, str]:
-    """
-    Collect booking information from user message
-    Returns: (updated_booking_state, response_message)
-    """
+def get_widget_instruction(field: str) -> str:
+    instructions = {
+        "service": "Please select a service from the dropdown above.",
+        "date": "Please select a date from the calendar above.",
+        "time": "Please select a time slot from the available options above."
+    }
+    return instructions.get(field, "")
+
+def collect_booking_info_enhanced(user_message: str, conversation_history: list) -> Tuple[Dict, str, Optional[str]]:
     booking_state = st.session_state.booking_state
     booking_state["intent"] = "booking"
     
-    # Get missing fields
     missing_fields = get_missing_fields(booking_state)
     
     if not missing_fields:
-        # All fields collected, move to confirmation
-        return booking_state, ""
+        return booking_state, "", None
     
-    # Try to extract current field from message
     current_field = missing_fields[0]
     
-    # Extract value from message
-    extracted_value = extract_field_from_message(user_message, current_field, conversation_history)
-    
-    if extracted_value:
-        # Validate based on field type
-        if current_field == "email":
-            is_valid, error_msg = validate_email(extracted_value)
-            if not is_valid:
-                return booking_state, error_msg
-        elif current_field == "phone":
-            is_valid, error_msg = validate_phone(extracted_value)
-            if not is_valid:
-                return booking_state, error_msg
-        elif current_field == "date":
-            is_valid, error_msg = validate_date(extracted_value)
-            if not is_valid:
-                return booking_state, error_msg
-        elif current_field == "time":
-            is_valid, error_msg = validate_time(extracted_value)
-            if not is_valid:
-                return booking_state, error_msg
+    if current_field in ["name", "email", "phone"]:
+        extracted_value = extract_field_from_message(user_message, current_field, conversation_history)
         
-        # Save field
-        booking_state[current_field] = extracted_value
-        
-        # Check if all fields collected
-        remaining_missing = get_missing_fields(booking_state)
-        if not remaining_missing:
-            # All fields collected
-            return booking_state, ""
+        if extracted_value:
+            if current_field == "email":
+                is_valid, error_msg = validate_email(extracted_value)
+                if not is_valid:
+                    return booking_state, error_msg, None
+            elif current_field == "phone":
+                is_valid, error_msg = validate_phone(extracted_value)
+                if not is_valid:
+                    return booking_state, error_msg, None
+            
+            booking_state[current_field] = extracted_value
+            
+            remaining_missing = get_missing_fields(booking_state)
+            if not remaining_missing:
+                return booking_state, "", None
+            else:
+                next_field = remaining_missing[0]
+                prompt = get_next_field_prompt(next_field)
+                widget = next_field if next_field in ["service", "date", "time"] else None
+                return booking_state, prompt, widget
         else:
-            # Ask for next field
-            next_field = remaining_missing[0]
-            return booking_state, get_next_field_prompt(next_field)
-    else:
-        # Value not found, ask for it
-        return booking_state, get_next_field_prompt(current_field)
+            return booking_state, get_next_field_prompt(current_field), None
+    
+    elif current_field in ["service", "date", "time"]:
+        prompt = get_next_field_prompt(current_field)
+        return booking_state, prompt, current_field
+    
+    return booking_state, get_next_field_prompt(current_field), None
 
 def format_booking_summary(booking_state: Dict) -> str:
-    """Format booking details for confirmation"""
     summary = f"""
-Please confirm your booking details:
+✅ **Please confirm your booking details:**
 
-**Name:** {booking_state.get('name', 'N/A')}
-**Email:** {booking_state.get('email', 'N/A')}
-**Phone:** {booking_state.get('phone', 'N/A')}
-**Service:** {booking_state.get('service', 'N/A')}
-**Date:** {booking_state.get('date', 'N/A')}
-**Time:** {booking_state.get('time', 'N/A')}
+👤 **Name:** {booking_state.get('name', 'N/A')}
+📧 **Email:** {booking_state.get('email', 'N/A')}
+📱 **Phone:** {booking_state.get('phone', 'N/A')}
+🏥 **Service:** {booking_state.get('service', 'N/A')}
+📅 **Date:** {booking_state.get('date', 'N/A')}
+⏰ **Time:** {booking_state.get('time', 'N/A')}
 
-Is this information correct? Please confirm (yes/no)
+Is this information correct? Please type **yes** to confirm or **no** to make changes.
     """
     return summary.strip()
 
 def handle_booking_confirmation(user_response: str, booking_state: Dict) -> Tuple[bool, str, Optional[int]]:
-    """
-    Handle booking confirmation
-    Returns: (success: bool, message: str, booking_id: Optional[int])
-    """
     user_response_lower = user_response.lower().strip()
     
     if "yes" in user_response_lower or "confirm" in user_response_lower or "correct" in user_response_lower:
-        # User confirmed, save booking
         try:
             booking_tool = BookingPersistenceTool()
             success, booking_id, message = booking_tool.execute(booking_state)
             
             if success and booking_id:
-                # Send email
                 email_tool = EmailTool()
                 email_details = {
                     "name": booking_state.get("name"),
@@ -209,11 +322,10 @@ def handle_booking_confirmation(user_response: str, booking_state: Dict) -> Tupl
                 email_success, email_msg = email_tool.execute(booking_state.get("email"), email_details)
                 
                 if email_success:
-                    final_message = f"✅ Booking confirmed! Your booking ID is #{booking_id}. Confirmation email sent to {booking_state.get('email')}"
+                    final_message = f"🎉 **Booking Confirmed!**\n\n✅ Your booking ID is **#{booking_id}**\n📧 Confirmation email sent to {booking_state.get('email')}\n\nThank you for choosing us! See you on {booking_state.get('date')} at {booking_state.get('time')}!"
                 else:
-                    final_message = f"✅ Booking confirmed! Your booking ID is #{booking_id}. (Note: Confirmation email could not be sent: {email_msg})"
+                    final_message = f"🎉 **Booking Confirmed!**\n\n✅ Your booking ID is **#{booking_id}**\n\n⚠️ Note: Confirmation email could not be sent, but your booking is confirmed."
                 
-                # Reset booking state
                 from app.chat_logic import reset_booking_state
                 reset_booking_state()
                 
@@ -225,10 +337,10 @@ def handle_booking_confirmation(user_response: str, booking_state: Dict) -> Tupl
             return False, f"❌ Error processing booking: {str(e)}", None
     
     elif "no" in user_response_lower or "incorrect" in user_response_lower or "wrong" in user_response_lower:
-        # User wants to correct
-        return False, "What would you like to change? Please specify the field and the correct value.", None
+        from app.chat_logic import reset_booking_state
+        reset_booking_state()
+        return False, "No problem! Let's start over. Type 'I want to book an appointment' to begin again.", None
     
     else:
-        # Unclear response
-        return False, "Please respond with 'yes' to confirm or 'no' to make changes.", None
+        return False, "Please type **yes** to confirm or **no** to cancel and start over.", None
 
