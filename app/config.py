@@ -24,23 +24,20 @@ def get_google_api_key():
 
 # Supabase Configuration
 def get_supabase_config():
-    """Get Supabase URL and key from Streamlit secrets (cloud) or .env (local)"""
-    # Try Streamlit secrets first (same pattern as get_google_api_key)
+    """Get Supabase URL and key from environment variables (.env) or Streamlit secrets (for cloud)"""
+    # Prioritize .env file for local development
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if url and key:
+        return {"url": url, "key": key}
+    # Fallback to Streamlit secrets (for Streamlit Cloud deployment)
     try:
-        url = st.secrets["SUPABASE_URL"]
-        key = st.secrets["SUPABASE_KEY"]
-        # Sanitize: strip quotes and whitespace (in case user added quotes in secrets)
-        url = str(url).strip().strip('"').strip("'")
-        key = str(key).strip().strip('"').strip("'")
-        if url and key:
-            return {"url": url, "key": key}
+        return {
+            "url": st.secrets["SUPABASE_URL"],
+            "key": st.secrets["SUPABASE_KEY"]
+        }
     except (KeyError, AttributeError):
-        pass
-    
-    # Fallback to .env (for local development)
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_KEY", "").strip()
-    return {"url": url, "key": key}
+        return {"url": "", "key": ""}
 
 # Gmail SMTP Configuration
 def get_email_config():
