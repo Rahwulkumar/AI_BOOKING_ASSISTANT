@@ -24,40 +24,20 @@ def get_google_api_key():
 
 # Supabase Configuration
 def get_supabase_config():
-    """Get Supabase URL and key from Streamlit secrets (cloud) or .env (local)"""
-    url = ""
-    key = ""
-    
-    # 1. Try Streamlit secrets first (Cloud)
+    """Get Supabase URL and key from environment variables (.env) or Streamlit secrets (for cloud)"""
+    # Prioritize .env file for local development
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    if url and key:
+        return {"url": url, "key": key}
+    # Fallback to Streamlit secrets (for Streamlit Cloud deployment)
     try:
-        if hasattr(st, 'secrets'):
-            # Check for flat format
-            if 'SUPABASE_URL' in st.secrets:
-                url = st.secrets["SUPABASE_URL"]
-                key = st.secrets["SUPABASE_KEY"]
-            # Check for nested [connections.supabase] format
-            elif 'connections' in st.secrets and 'supabase' in st.secrets['connections']:
-                url = st.secrets['connections']['supabase']['SUPABASE_URL']
-                key = st.secrets['connections']['supabase']['SUPABASE_KEY']
+        return {
+            "url": st.secrets["SUPABASE_URL"],
+            "key": st.secrets["SUPABASE_KEY"]
+        }
     except (KeyError, AttributeError):
-        pass
-    
-    # 2. Fallback to .env (Local)
-    if not url or not key:
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
-
-    # 3. Robust Sanitization (Fixes 'Invalid API Key' caused by quotes/spaces)
-    if url:
-        url = str(url).strip().strip("'").strip('"')
-    if key:
-        key = str(key).strip().strip("'").strip('"')
-
-    # Debug (Optional - helps verify on cloud)
-    # if hasattr(st, 'write'):
-    #     st.write(f"DEBUG: Loaded Supabase URL: {url[:10]}... Key length: {len(key) if key else 0}")
-
-    return {"url": url or "", "key": key or ""}
+        return {"url": "", "key": ""}
 
 # Gmail SMTP Configuration
 def get_email_config():

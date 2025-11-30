@@ -13,23 +13,8 @@ class Database:
         if not config["url"] or not config["key"]:
             raise ValueError("Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_KEY in secrets.")
         
-        # DEBUG: Log what we're passing to create_client
-        if hasattr(st, 'write'):
-            st.write("🔍 DEBUG: Creating Supabase client...")
-            st.write(f"🔍 DEBUG: URL: {config['url'][:40]}...")
-            st.write(f"🔍 DEBUG: Key starts with: {config['key'][:20]}... (length: {len(config['key'])})")
-        
-        try:
-            self.client: Client = create_client(config["url"], config["key"])
-            if hasattr(st, 'write'):
-                st.success("✅ DEBUG: Supabase client created successfully")
-            self._ensure_tables_exist()
-        except Exception as e:
-            if hasattr(st, 'write'):
-                st.error(f"❌ DEBUG: Error creating Supabase client: {str(e)}")
-                st.write(f"🔍 DEBUG: URL was: {config['url']}")
-                st.write(f"🔍 DEBUG: Key length was: {len(config['key']) if config['key'] else 0}")
-            raise
+        self.client: Client = create_client(config["url"], config["key"])
+        self._ensure_tables_exist()
     
     def _ensure_tables_exist(self):
         try:
